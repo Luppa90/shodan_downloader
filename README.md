@@ -5,7 +5,7 @@ A Python tool for downloading and filtering large datasets from Shodan.
 ## Installation
 
 ```bash
-pip install shodan-downloader
+pip install shodan_downloader
 ```
 
 ## Usage
