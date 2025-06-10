@@ -13,9 +13,7 @@ def get_nested_value(d, path):
     parts = path.split('.')
     value = d
     for i, part in enumerate(parts):
-        # If this is the last part and it's a common X.509 field, try both cases
         if i == len(parts) - 1 and part in {"cn", "c", "o", "ou", "l", "st"}:
-            # Try lowercase first, then uppercase
             if isinstance(value, dict):
                 if part in value:
                     value = value[part]
@@ -30,7 +28,6 @@ def get_nested_value(d, path):
                 value = value[part]
             else:
                 return ''
-    # Special case: convert integer IP to dotted-quad
     if path == "ip" and isinstance(value, int):
         try:
             return socket.inet_ntoa(struct.pack("!I", value))
@@ -41,10 +38,6 @@ def get_nested_value(d, path):
     return value if value is not None else ''
 
 def filter_result(result: dict, filter_str: str) -> List[List[str]]:
-    """
-    Filter a single Shodan result dictionary according to the filter string.
-    Returns a list of lists (one per match, each a list of field values).
-    """
     filter_list = filter_str.split('/')
     output_rows = []
     for r in result.get('matches', []):
@@ -67,20 +60,15 @@ def search_shodan(
     api_key: Optional[str] = None,
     output_format: str = "csv",
 ):
-    """
-    Search Shodan with the given query and write filtered results to output_file.
-    Supports CSV and JSONL output formats.
-    """
     if api_key is None:
         api_key = get_shodan_api_key()
     api = shodan.Shodan(api_key)
-    # Get total number of results
     try:
         result_number = api.count(query)
         total = result_number.get('total', 0)
-        logging.info(f"Search query: '{query}' has {total} results")
+        tqdm.write(f"Search query: '{query}' has {total} results")
     except shodan.exception.APIError as e:
-        logging.error(f"Shodan API error: {e}")
+        tqdm.write(f"Shodan API error: {e}")
         raise
 
     if limit and limit > 0:
@@ -88,18 +76,26 @@ def search_shodan(
     cnt = 0
     page = 1
     filter_list = filter_str.split('/')
-    # Progress bar setup
     num_pages = (total + DEFAULT_PAGE_SIZE - 1) // DEFAULT_PAGE_SIZE
     use_progress = num_pages > 10
-    pbar = tqdm(total=total, initial=cnt, disable=not use_progress, unit="results")
+    pbar = tqdm(
+        total=total,
+        initial=cnt,
+        disable=not use_progress,
+        unit="results",
+        bar_format="{l_bar}{bar} {n_fmt}/{total_fmt}"
+    )
     wrote_header = False
+    check = 0
     while cnt < total:
         try:
             remaining = total - cnt
             page_size = min(DEFAULT_PAGE_SIZE, remaining)
             result = api.search(query, page=page)
             rows = filter_result(result, filter_str)
-            # Only write up to the limit if on the last page
+            if not rows:
+                tqdm.write(f"No more results returned by Shodan at page {page}. Stopping early.")
+                break
             if cnt + len(rows) > total:
                 rows = rows[:total - cnt]
             if output_format == "csv":
@@ -115,32 +111,33 @@ def search_shodan(
             cnt += len(rows)
             if use_progress:
                 pbar.update(len(rows))
-            logging.info(f"Downloaded {cnt}/{total}")
+                pbar.set_postfix_str(f"Downloaded {cnt}/{total}")
+            else:
+                print(f"Downloaded {cnt}/{total}")
             page += 1
             check = 0
         except shodan.exception.APIError as e:
             check += 1
             if "rate limit" in str(e).lower():
-                logging.warning("Rate limit hit. Backing off for 60 seconds...")
+                tqdm.write("Rate limit hit. Backing off for 60 seconds...")
                 time.sleep(60)
             elif check > MAX_RETRIES:
-                logging.error(f"Exit after {MAX_RETRIES} retries. Last error: {e}")
+                tqdm.write(f"Exit after {MAX_RETRIES} retries. Last error: {e}")
                 break
             else:
-                logging.warning(f"Shodan API error: {e}. Retrying in {RETRY_DELAY_SECONDS} seconds...")
+                if "Unable to parse JSON response" in str(e):
+                    logging.debug(f"Shodan API error: {e}. Retrying in {RETRY_DELAY_SECONDS} seconds...")
+                else:
+                    tqdm.write(f"Shodan API error: {e}. Retrying in {RETRY_DELAY_SECONDS} seconds...")
                 time.sleep(RETRY_DELAY_SECONDS)
         except Exception as e:
-            logging.error(f"Unexpected error: {e}")
+            tqdm.write(f"Unexpected error: {e}")
             break
     if use_progress:
         pbar.close()
-    logging.info("Done!")
+    tqdm.write(f"Done! Downloaded {cnt} results (Shodan reported {total}).")
 
 def get_ip_location(ip: str, api_key: Optional[str] = None) -> dict:
-    """
-    Get location information for a given IP address using Shodan.
-    Returns a dictionary with latitude, longitude, and Google Maps URL.
-    """
     if api_key is None:
         api_key = get_shodan_api_key()
     api = shodan.Shodan(api_key)
@@ -156,5 +153,5 @@ def get_ip_location(ip: str, api_key: Optional[str] = None) -> dict:
             "raw": host,
         }
     except shodan.exception.APIError as e:
-        logging.error(f"Shodan API error: {e}")
+        tqdm.write(f"Shodan API error: {e}")
         raise

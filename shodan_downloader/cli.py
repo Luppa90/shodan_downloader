@@ -4,17 +4,15 @@ import logging
 from .core import search_shodan, get_ip_location
 from .utils import setup_logging, get_shodan_api_key, get_cached_filters
 
-def validate_shodan_api_key(api_key):
-    import shodan
-    api = shodan.Shodan(api_key)
-    try:
-        api.info()
-    except shodan.exception.APIError as e:
-        raise RuntimeError(f"Invalid Shodan API key: {e}")
-
 def main():
     parser = argparse.ArgumentParser(
-        description="ShodanDownloader: Robustly download and filter Shodan results."
+        description="ShodanDownloader: search, filter, and download Shodan results.",
+        epilog="""
+            Examples:
+            shodan-downloader search -q 'ssl:"O=Fortinet Ltd., CN=FortiGate" country:IL' -f ip_str/port -o results.csv
+            shodan-downloader search -q 'apache port:8080' -f ip_str/port -o results.jsonl -F jsonl
+            shodan-downloader ip-location 8.8.8.8
+        """
     )
     parser.add_argument(
         "--verbose", "-v", action="store_true", help="Enable verbose logging"
@@ -93,6 +91,14 @@ def main():
         except Exception as e:
             logging.error(f"Error during IP location lookup: {e}")
             sys.exit(1)
+            
+def validate_shodan_api_key(api_key):
+    import shodan
+    api = shodan.Shodan(api_key)
+    try:
+        api.info()
+    except shodan.exception.APIError as e:
+        raise RuntimeError(f"Invalid Shodan API key: {e}")
 
 if __name__ == "__main__":
     main()

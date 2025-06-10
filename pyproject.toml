@@ -4,10 +4,19 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "shodan_downloader"
-version = "0.1.0"
-description = "A modern Python tool for searching Shodan and exporting filtered results."
+version = "0.1.1"
+description = "A Python tool for searching Shodan and downloading filtered results."
 readme = "README.md"
 requires-python = ">=3.7"
 dependencies = [
     "shodan>=1.28.0",
+    "requests>=2.0.0",
+    "tqdm>=4.67.1",
 ]
+authors = [
+    { name="Luppa", email="102318505+Luppa90@users.noreply.github.com" }
+]
+
+[project.scripts]
+shodan-downloader = "shodan_downloader.cli:main"
+
